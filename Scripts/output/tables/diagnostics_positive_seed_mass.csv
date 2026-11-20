@@ -1,0 +1,5 @@
+model,check,statistic,p_value,method
+positive_seed_mass,dispersion,1.0041362848630853,0.932,DHARMa nonparametric dispersion test via sd of residuals fitted vs. simulated
+positive_seed_mass,uniformity,0.061025974025973984,0.6148710636840131,Asymptotic one-sample Kolmogorov-Smirnov test
+positive_seed_mass,outliers,0,1,DHARMa outlier test based on exact binomial test with approximate expectations
+positive_seed_mass,zero_inflation,,1,DHARMa zero-inflation test via comparison to expected zeros with simulation under H0 = fitted model

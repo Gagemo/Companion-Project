@@ -1,0 +1,5 @@
+model,check,statistic,p_value,method
+sensitivity_mortality,dispersion,1.0071211884452491,0.932,DHARMa nonparametric dispersion test via sd of residuals fitted vs. simulated
+sensitivity_mortality,uniformity,0.11155601138249044,0.719851690862465,Exact one-sample Kolmogorov-Smirnov test
+sensitivity_mortality,outliers,0,1,DHARMa bootstrapped outlier test
+sensitivity_mortality,zero_inflation,1.2531328320802004,0.994,DHARMa zero-inflation test via comparison to expected zeros with simulation under H0 = fitted model

@@ -1,0 +1,5 @@
+
+Conditional model:
+ Groups     Name        Std.Dev.
+ site_block (Intercept) 0.59305 
+ plot_id    (Intercept) 0.83090 

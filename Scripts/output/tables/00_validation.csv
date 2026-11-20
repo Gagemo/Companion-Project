@@ -1,0 +1,12 @@
+check,result
+Total plant records,360
+Unique plant IDs,360
+Sites,2
+Plots,36
+Treatments,3
+Plants per plot,10
+Mortality coded 0/1,1
+Produced seed coded 0/1,1
+Dead plants did not produce seed,1
+Non-seed producers lack weights,1
+Seed producers missing weights,0

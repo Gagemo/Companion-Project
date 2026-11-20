@@ -1,7 +1,7 @@
-site,treatment,estimated_filled_weight_g,estimated_filled_weight_per_planted_g
-Panhandle,N,77.82236,77.82236
-Panhandle,F,135.06112,135.06112
-Panhandle,P,28.69932,28.69932
-Peninsula,N,268.28244,268.28244
-Peninsula,F,78.94216,78.94216
-Peninsula,P,27.474080000000004,27.474080000000004
+site,treatment,estimated_filled_weight_g,estimated_filled_weight_per_planted_g,n_missing_filled_weight
+Panhandle,N,77.82236,77.82236,0
+Panhandle,F,135.06112,135.06112,0
+Panhandle,P,28.69932,28.69932,0
+Peninsula,N,268.28244,268.28244,0
+Peninsula,F,78.94216,78.94216,0
+Peninsula,P,27.474080000000004,27.474080000000004,0

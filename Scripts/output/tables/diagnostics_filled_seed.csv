@@ -1,0 +1,5 @@
+model,check,statistic,p_value,method
+filled_seed,dispersion,1.0889623957124286,0.424,DHARMa nonparametric dispersion test via sd of residuals fitted vs. simulated
+filled_seed,uniformity,0.06802016952904183,0.47431408482385917,Asymptotic one-sample Kolmogorov-Smirnov test
+filled_seed,outliers,1,0.38,DHARMa bootstrapped outlier test
+filled_seed,zero_inflation,0,1,DHARMa zero-inflation test via comparison to expected zeros with simulation under H0 = fitted model

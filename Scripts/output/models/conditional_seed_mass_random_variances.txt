@@ -1,0 +1,5 @@
+
+Conditional model:
+ Groups   Name        Std.Dev.  
+ plot_id  (Intercept) 3.8893e-05
+ Residual             1.2132e+00

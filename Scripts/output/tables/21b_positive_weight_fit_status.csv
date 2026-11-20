@@ -1,0 +1,3 @@
+model,converged,positive_definite_hessian,AIC,logLik
+positive_mass_additive,TRUE,TRUE,536.6540260263743,-252.32701301318713
+positive_mass_interaction,TRUE,TRUE,532.5519253511598,-248.27596267557988

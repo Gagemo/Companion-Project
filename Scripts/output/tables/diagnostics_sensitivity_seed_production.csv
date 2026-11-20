@@ -1,0 +1,5 @@
+model,check,statistic,p_value,method
+sensitivity_seed_production,dispersion,1.0222424704362916,0.832,DHARMa nonparametric dispersion test via sd of residuals fitted vs. simulated
+sensitivity_seed_production,uniformity,0.11874747834385685,0.6470466269330533,Exact one-sample Kolmogorov-Smirnov test
+sensitivity_seed_production,outliers,0,1,DHARMa bootstrapped outlier test
+sensitivity_seed_production,zero_inflation,0.7667241709794902,0.672,DHARMa zero-inflation test via comparison to expected zeros with simulation under H0 = fitted model

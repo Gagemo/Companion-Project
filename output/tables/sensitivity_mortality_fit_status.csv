@@ -1,0 +1,3 @@
+model,converged,positive_definite_hessian,AIC,logLik
+mortality_additive,TRUE,TRUE,166.48270647338876,-68.24135323669438
+mortality_interaction,TRUE,TRUE,159.8500130280009,-62.92500651400045
