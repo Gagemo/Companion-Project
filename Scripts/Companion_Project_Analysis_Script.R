@@ -122,10 +122,10 @@ write_table <- function(x, filename) {
   readr::write_csv(x, file.path(tables_dir, filename), na = "")
 }
 
-
 format_p <- function(p) {
   if (is.na(p)) return("p = NA")
   if (p < 0.001) return("p < 0.001")
+  if (p < 0.01) return(paste0("p = ", formatC(p, format = "f", digits = 4)))
   paste0("p = ", formatC(p, format = "f", digits = 3))
 }
 
@@ -148,7 +148,10 @@ make_cld_three <- function(pair_obj, emm_obj,
     stop("Could not identify the estimated-mean column in emmeans output.")
   }
   
-  map_dfr(levels(dat$site), function(site_name) {
+  site_levels <- levels(emm_df$site)
+  if (is.null(site_levels)) site_levels <- unique(as.character(emm_df$site))
+  
+  map_dfr(site_levels, function(site_name) {
     pd <- pair_df |> filter(as.character(site) == site_name)
     ed <- emm_df |> filter(as.character(site) == site_name)
     
@@ -203,11 +206,17 @@ make_cld_three <- function(pair_obj, emm_obj,
       }
     }
     
-    tibble(
-      site = factor(site_name, levels = levels(dat$site)),
+    out <- tibble(
+      site = factor(site_name, levels = site_levels),
       treatment = factor(treatment_levels, levels = treatment_levels),
       significance_group = unname(group_letters[treatment_levels])
     )
+    
+    # Suppress redundant "a" labels on figures when all treatments in a site share one group.
+    out |>
+      mutate(
+        display_letter = if (dplyr::n_distinct(significance_group) <= 1L) "" else significance_group
+      )
   })
 }
 
@@ -711,7 +720,7 @@ plot_dat <- plot_dat |>
          n_no_seed = planted - n_seed_producers)
 mortality_sensitivity <- fit_betabinomial_sensitivity("n_mortality", "n_alive", "mortality")
 produced_seed_sensitivity <- fit_betabinomial_sensitivity("n_seed_producers", "n_no_seed",
-                                                       "seed_production")
+                                                          "seed_production")
 
 # ---- PRIMARY SEED-MASS MODEL (FIXED-BLOCK RCBD, PLOT AS UNIT) ----
 # Distinguish true zeros (non-producing plugs) from missing weights.
@@ -748,8 +757,8 @@ tryCatch({
 message("DIAGNOSTIC FIGURE SAVED: ", weight_diag_file)
 weight_shapiro <- shapiro.test(residuals(weight_model_interaction))
 weight_diagnostics <- tibble(test = "Shapiro-Wilk residual normality",
-                              statistic = unname(weight_shapiro$statistic),
-                              p_value = weight_shapiro$p.value)
+                             statistic = unname(weight_shapiro$statistic),
+                             p_value = weight_shapiro$p.value)
 write_table(weight_diagnostics, "20_weight_model_diagnostics.csv")
 
 # ---- CONDITIONAL SEED MASS AMONG SEED-PRODUCING PLUGS ----
@@ -779,7 +788,7 @@ if (!all(positive_weight_fit_status$converged & positive_weight_fit_status$posit
   warning("Conditional positive-mass model needs fit review.")
 }
 
-# ---- SIGNIFICANCE LETTERS FOR FIGURES ----
+# ---- SIGNIFICANCE LETTERS & SHARED FIGURE STYLING ----
 # Letters are based on Tukey-adjusted within-site pairwise comparisons.
 # Treatments sharing a letter are not significantly different (alpha = 0.05).
 weight_letters <- make_cld_three(weight_pairs_site, weight_emm_site)
@@ -799,289 +808,315 @@ mortality_interaction_p <- mortality_interaction_test$`Pr(>Chisq)`[2]
 produced_seed_interaction_p <- produced_seed_interaction_test$`Pr(>Chisq)`[2]
 quality_interaction_p <- quality_interaction_test$`Pr(>Chisq)`[2]
 
+# Set to FALSE before final journal submission if subtitles belong only in captions
+show_plot_subtitles <- TRUE
+wrap_sub <- function(txt, width = 82) {
+  if (!show_plot_subtitles || is.null(txt)) return(NULL)
+  stringr::str_wrap(txt, width = width)
+}
 
-# ---- FIGURE 1: Total seed weight ----
+# Consistent colorblind-safe palette across all figures
+trt_palette <- c(N = "#56B4E9", F = "#009E73", P = "#E69F00")
+
+theme_manuscript <- function() {
+  theme_classic(base_size = 13) +
+    theme(
+      legend.position = "none",
+      strip.background = element_blank(),
+      strip.text = element_text(face = "bold", size = 15),
+      axis.title = element_text(face = "bold", size = 14),
+      axis.text = element_text(size = 13, color = "black"),
+      plot.subtitle = element_text(size = 11.5, margin = margin(b = 8)),
+      panel.spacing = unit(1.2, "lines")
+    )
+}
+
+# ---- MANUSCRIPT FIGURE 2 (DATA FIGURE 1): Total seed weight ----
 weight_letter_pos <- weight_model_dat |>
   group_by(site, treatment) |>
-  summarise(y = max(total_weight_g, na.rm = TRUE)) |>
+  summarise(y = max(total_weight_g, na.rm = TRUE), .groups = "drop") |>
   left_join(weight_letters, by = c("site", "treatment")) |>
-  group_by(site) |>
   mutate(
-    panel_max = max(weight_model_dat$total_weight_g[weight_model_dat$site == first(site)], na.rm = TRUE),
-    y = y + pmax(panel_max * 0.08, 2)
-  ) |>
-  ungroup()
+    global_max = max(y, na.rm = TRUE),
+    y = y + pmax(global_max * 0.06, 2)
+  )
 
 fig_weight <- ggplot(weight_model_dat, aes(x = treatment, y = total_weight_g, fill = treatment)) +
-  geom_boxplot(width = 0.55, alpha = 0.65, outlier.shape = NA) +
-  geom_jitter(aes(shape = site), width = 0.10, size = 2.7, alpha = 0.8) +
+  geom_boxplot(width = 0.55, alpha = 0.70, outlier.shape = NA) +
+  geom_jitter(width = 0.10, size = 2.4, alpha = 0.80, shape = 21, color = "black") +
   geom_text(
     data = weight_letter_pos,
-    aes(x = treatment, y = y, label = significance_group),
+    aes(x = treatment, y = y, label = display_letter),
     inherit.aes = FALSE,
     fontface = "bold",
     size = 5
   ) +
-  facet_wrap(~ site, nrow = 1, scales = "free_y") +
-  scale_y_continuous(expand = expansion(mult = c(0.03, 0.16))) +
+  facet_wrap(~ site, nrow = 1) +
+  scale_fill_manual(values = trt_palette) +
+  scale_y_continuous(expand = expansion(mult = c(0.03, 0.14))) +
   labs(
     title = NULL,
-    subtitle = paste0(
-      "Different letters indicate Tukey-adjusted differences within site; treatment x site ",
+    subtitle = wrap_sub(paste0(
+      "Letters indicate Tukey-adjusted differences within site (α = 0.05); treatment × site ",
       format_p(weight_interaction_p)
-    ),
+    )),
     x = "Treatment",
-    y = "Total harvested seed weight per plot (g)",
-    shape = "Site"
+    y = "Total harvested seed weight per plot (g)"
   ) +
-  theme_classic(base_size = 13) +
-  theme(
-    legend.position = "none",
-    strip.background = element_blank(),
-    strip.text = element_text(face = "bold", size = 16),
-    axis.title = element_text(face = "bold", size = 16),
-    axis.text = element_text(size = 14)
-  ) +
-  guides(fill = "none")
-print(fig_weight)
-save_plot("Figure_1_Total_Seed_Weight.png", fig_weight, width = 9, height = 5.5)
+  theme_manuscript()
 
-# ---- FIGURE 2: Mortality ----
+print(fig_weight)
+save_plot("Figure_1_Total_Seed_Weight.png", fig_weight, width = 8.5, height = 5.2)
+
+# ---- MANUSCRIPT FIGURE 3 (DATA FIGURE 2): Mortality ----
+mortality_max_pts <- plot_dat |>
+  group_by(site, treatment) |>
+  summarise(max_pt = max(mortality_rate, na.rm = TRUE), .groups = "drop")
+
 mortality_plot_dat <- plot_summary |>
   left_join(mortality_letters, by = c("site", "treatment")) |>
-  mutate(label_y = pmin(mean_mortality + se_mortality + 0.08, 1.08))
+  left_join(mortality_max_pts, by = c("site", "treatment")) |>
+  mutate(label_y = pmax(mean_mortality + se_mortality, max_pt) + 0.06)
 
-fig_mortality <- ggplot(mortality_plot_dat, aes(x = treatment, y = mean_mortality, fill = site)) +
-  geom_col(position = position_dodge(width = 0.75), width = 0.65) +
+fig_mortality <- ggplot(mortality_plot_dat, aes(x = treatment, y = mean_mortality, fill = treatment)) +
+  geom_col(width = 0.58, alpha = 0.75, color = "black", linewidth = 0.4) +
   geom_errorbar(
     aes(
       ymin = pmax(mean_mortality - se_mortality, 0),
       ymax = pmin(mean_mortality + se_mortality, 1)
     ),
-    position = position_dodge(width = 0.75), width = 0.15
+    width = 0.16,
+    linewidth = 0.5
   ) +
-  geom_point(
+  geom_jitter(
     data = plot_dat,
-    aes(x = treatment, y = mortality_rate, group = site, fill = site),
-    position = position_jitterdodge(jitter.width = 0.08, dodge.width = 0.75),
-    inherit.aes = FALSE, alpha = 0.6, size = 1.8, shape = 21, color = "black"
+    aes(x = treatment, y = mortality_rate, fill = treatment),
+    width = 0.10, height = 0, size = 2.2, alpha = 0.75, shape = 21, color = "black"
   ) +
   geom_text(
-    aes(y = label_y, label = significance_group, group = site),
-    position = position_dodge(width = 0.75),
+    aes(y = label_y, label = display_letter),
     fontface = "bold",
     size = 5,
     vjust = 0
   ) +
+  facet_wrap(~ site, nrow = 1) +
+  scale_fill_manual(values = trt_palette) +
   scale_y_continuous(
     labels = percent_format(accuracy = 1),
-    limits = c(0, 1.12),
+    limits = c(0, 1.15),
     breaks = seq(0, 1, 0.2),
     expand = expansion(mult = c(0, 0.02))
   ) +
   labs(
-    title = "Liatris plug mortality",
-    subtitle = paste0(
-      "Bars are plot-level means +/- SE; different letters indicate Tukey-adjusted differences within site; treatment x site ",
+    title = NULL,
+    subtitle = wrap_sub(paste0(
+      "Bars show plot-level means ± SE; letters indicate Tukey-adjusted differences within site (α = 0.05); treatment × site ",
       format_p(mortality_interaction_p)
-    ),
+    )),
     x = "Treatment",
-    y = "Mortality (%)",
-    fill = "Site"
+    y = "Mortality (%)"
   ) +
-  theme_classic(base_size = 13) +
-  theme(
-    legend.position = "top",
-    axis.title = element_text(face = "bold", size = 16),
-    axis.text = element_text(size = 14),
-    legend.title = element_text(face = "bold", size = 15),
-    legend.text = element_text(size = 14)
-  )
+  theme_manuscript()
+
 print(fig_mortality)
-save_plot("Figure_2_Mortality.png", fig_mortality, width = 8.5, height = 6)
+save_plot("Figure_2_Mortality.png", fig_mortality, width = 8.5, height = 5.2)
 
 # ---- SUPPLEMENT FIGURE: Probability of producing seed ----
+produced_seed_max_pts <- plot_dat |>
+  group_by(site, treatment) |>
+  summarise(max_pt = max(produced_seed_rate, na.rm = TRUE), .groups = "drop")
+
 produced_seed_plot_dat <- plot_summary |>
   left_join(produced_seed_letters, by = c("site", "treatment")) |>
-  mutate(label_y = pmin(mean_produced_seed + se_produced_seed + 0.08, 1.08))
+  left_join(produced_seed_max_pts, by = c("site", "treatment")) |>
+  mutate(label_y = pmax(mean_produced_seed + se_produced_seed, max_pt) + 0.06)
 
 fig_produced_seed <- ggplot(
   produced_seed_plot_dat,
-  aes(x = treatment, y = mean_produced_seed, fill = site)
+  aes(x = treatment, y = mean_produced_seed, fill = treatment)
 ) +
-  geom_col(position = position_dodge(width = 0.75), width = 0.65) +
+  geom_col(width = 0.58, alpha = 0.75, color = "black", linewidth = 0.4) +
   geom_errorbar(
     aes(
       ymin = pmax(mean_produced_seed - se_produced_seed, 0),
       ymax = pmin(mean_produced_seed + se_produced_seed, 1)
     ),
-    position = position_dodge(width = 0.75), width = 0.15
+    width = 0.16,
+    linewidth = 0.5
   ) +
-  geom_point(
+  geom_jitter(
     data = plot_dat,
-    aes(x = treatment, y = produced_seed_rate, group = site, fill = site),
-    position = position_jitterdodge(jitter.width = 0.08, dodge.width = 0.75),
-    inherit.aes = FALSE, alpha = 0.6, size = 1.8, shape = 21, color = "black"
+    aes(x = treatment, y = produced_seed_rate, fill = treatment),
+    width = 0.10, height = 0, size = 2.2, alpha = 0.75, shape = 21, color = "black"
   ) +
   geom_text(
-    aes(y = label_y, label = significance_group, group = site),
-    position = position_dodge(width = 0.75),
-    fontface = "bold", size = 5, vjust = 0
+    aes(y = label_y, label = display_letter),
+    fontface = "bold",
+    size = 5,
+    vjust = 0
   ) +
+  facet_wrap(~ site, nrow = 1) +
+  scale_fill_manual(values = trt_palette) +
   scale_y_continuous(
-    labels = percent_format(accuracy = 1), limits = c(0, 1.12),
-    breaks = seq(0, 1, 0.2), expand = expansion(mult = c(0, 0.02))
+    labels = percent_format(accuracy = 1),
+    limits = c(0, 1.15),
+    breaks = seq(0, 1, 0.2),
+    expand = expansion(mult = c(0, 0.02))
   ) +
   labs(
-    title = "Liatris seed-production success",
-    subtitle = paste0(
-      "Bars are plot-level means +/- SE; letters compare treatments within site; treatment x site ",
+    title = NULL,
+    subtitle = wrap_sub(paste0(
+      "Bars show plot-level means ± SE; letters indicate Tukey-adjusted differences within site (α = 0.05); treatment × site ",
       format_p(produced_seed_interaction_p)
-    ),
-    x = "Treatment", y = "Plugs producing seed (%)", fill = "Site"
+    )),
+    x = "Treatment",
+    y = "Plugs producing seed (%)"
   ) +
-  theme_classic(base_size = 13) +
-  theme(legend.position = "top", axis.title = element_text(face = "bold"))
+  theme_manuscript()
 
 print(fig_produced_seed)
-save_plot("Supplement_Figure_Seed_Production_Success.png", fig_produced_seed, width = 8.5, height = 6)
+save_plot("Supplement_Figure_Seed_Production_Success.png", fig_produced_seed, width = 8.5, height = 5.2)
 
-# ---- FIGURE 3: Filled-seed proportion ----
+# ---- MANUSCRIPT FIGURE 4 (DATA FIGURE 3): Filled-seed proportion ----
+quality_max_pts <- plot_dat |>
+  filter(!is.na(pooled_filled_proportion)) |>
+  group_by(site, treatment) |>
+  summarise(max_pt = max(pooled_filled_proportion, na.rm = TRUE), .groups = "drop")
+
 quality_plot_dat <- plot_summary |>
   left_join(quality_letters, by = c("site", "treatment")) |>
-  mutate(label_y = pmin(mean_filled + se_filled + 0.08, 1.08))
+  left_join(quality_max_pts, by = c("site", "treatment")) |>
+  mutate(label_y = pmax(mean_filled + se_filled, max_pt) + 0.06)
 
-fig_filled <- ggplot(quality_plot_dat, aes(x = treatment, y = mean_filled, fill = site)) +
-  geom_col(position = position_dodge(width = 0.75), width = 0.65) +
+fig_filled <- ggplot(quality_plot_dat, aes(x = treatment, y = mean_filled, fill = treatment)) +
+  geom_col(width = 0.58, alpha = 0.75, color = "black", linewidth = 0.4) +
   geom_errorbar(
     aes(
       ymin = pmax(mean_filled - se_filled, 0),
       ymax = pmin(mean_filled + se_filled, 1)
     ),
-    position = position_dodge(width = 0.75), width = 0.15
+    width = 0.16,
+    linewidth = 0.5
   ) +
-  geom_point(
+  geom_jitter(
     data = plot_dat |> filter(!is.na(pooled_filled_proportion)),
-    aes(x = treatment, y = pooled_filled_proportion, group = site, fill = site),
-    position = position_jitterdodge(jitter.width = 0.08, dodge.width = 0.75),
-    inherit.aes = FALSE, alpha = 0.6, size = 1.8, shape = 21, color = "black"
+    aes(x = treatment, y = pooled_filled_proportion, fill = treatment),
+    width = 0.10, height = 0, size = 2.2, alpha = 0.75, shape = 21, color = "black"
   ) +
   geom_text(
-    aes(y = label_y, label = significance_group, group = site),
-    position = position_dodge(width = 0.75),
+    aes(y = label_y, label = display_letter),
     fontface = "bold",
     size = 5,
     vjust = 0
   ) +
+  facet_wrap(~ site, nrow = 1) +
+  scale_fill_manual(values = trt_palette) +
   scale_y_continuous(
     labels = percent_format(accuracy = 1),
-    limits = c(0, 1.12),
+    limits = c(0, 1.15),
     breaks = seq(0, 1, 0.2),
     expand = expansion(mult = c(0, 0.02))
   ) +
   labs(
-    title = "Filled-seed proportion",
-    subtitle = paste0(
-      "Bars are plot-level means +/- SE; different letters indicate Tukey-adjusted differences within site; treatment x site ",
+    title = NULL,
+    subtitle = wrap_sub(paste0(
+      "Bars show plot-level means ± SE; no significant pairwise differences within site (α = 0.05); treatment × site ",
       format_p(quality_interaction_p)
-    ),
+    )),
     x = "Treatment",
-    y = "Filled seeds (%)",
-    fill = "Site"
+    y = "Filled seeds (%)"
   ) +
-  theme_classic(base_size = 13) +
-  theme(
-    legend.position = "top",
-    axis.title = element_text(face = "bold", size = 16),
-    axis.text = element_text(size = 14),
-    legend.title = element_text(face = "bold", size = 15),
-    legend.text = element_text(size = 14)
-  )
+  theme_manuscript()
+
 print(fig_filled)
-save_plot("Figure_3_Filled_Seed_Proportion.png", fig_filled, width = 8.5, height = 6)
+save_plot("Figure_3_Filled_Seed_Proportion.png", fig_filled, width = 8.5, height = 5.2)
 
 # ---- SUPPLEMENT FIGURE 1: Weight among reproductive plants ----
 positive_weight_letter_pos <- positive_dat |>
   group_by(site, treatment) |>
-  summarise(y = max(weight_g, na.rm = TRUE)) |>
+  summarise(y = max(weight_g, na.rm = TRUE), .groups = "drop") |>
   left_join(positive_weight_letters, by = c("site", "treatment")) |>
   group_by(site) |>
   mutate(
-    panel_max = max(positive_dat$weight_g[positive_dat$site == first(site)], na.rm = TRUE),
+    panel_max = max(y, na.rm = TRUE),
     y = y + pmax(panel_max * 0.08, 0.5)
   ) |>
   ungroup()
 
 fig_positive_weight <- positive_dat |>
-  ggplot(aes(x = treatment, y = weight_g)) +
-  geom_boxplot(width = 0.55, outlier.shape = NA) +
-  geom_jitter(aes(shape = site), width = 0.12, alpha = 0.65, size = 2) +
+  ggplot(aes(x = treatment, y = weight_g, fill = treatment)) +
+  geom_boxplot(width = 0.55, alpha = 0.70, outlier.shape = NA) +
+  geom_jitter(width = 0.12, alpha = 0.70, size = 2, shape = 21, color = "black") +
   geom_text(
     data = positive_weight_letter_pos,
-    aes(x = treatment, y = y, label = significance_group),
+    aes(x = treatment, y = y, label = display_letter),
     inherit.aes = FALSE,
     fontface = "bold",
     size = 5
   ) +
   facet_wrap(~ site, nrow = 1, scales = "free_y") +
+  scale_fill_manual(values = trt_palette) +
   scale_y_continuous(expand = expansion(mult = c(0.03, 0.16))) +
   labs(
-    title = "Seed mass among reproductive Liatris plugs",
-    subtitle = "Different letters indicate Tukey-adjusted differences within site; nonreproductive plugs excluded",
+    title = NULL,
+    subtitle = wrap_sub("Letters indicate Tukey-adjusted differences within site (α = 0.05); nonreproductive plugs excluded"),
     x = "Treatment",
-    y = "Harvested seed mass per plug (g)",
-    shape = "Site"
+    y = "Harvested seed mass per plug (g)"
   ) +
-  theme_classic(base_size = 13) +
-  theme(legend.position = "none", axis.title = element_text(face = "bold"),
-        strip.background = element_blank(), strip.text = element_text(face = "bold"))
+  theme_manuscript()
+
 print(fig_positive_weight)
-save_plot("Supplement_Figure_1_Weight_Among_Producers.png", fig_positive_weight, width = 9, height = 5.5)
+save_plot("Supplement_Figure_1_Weight_Among_Producers.png", fig_positive_weight, width = 8.5, height = 5.2)
 
 # ---- SUPPLEMENT FIGURE 2: Site x treatment interaction ----
 weight_interaction_summary <- weight_model_dat |>
   group_by(site, treatment) |>
-  summarise(mean_weight = mean(total_weight_g), se_weight = sd(total_weight_g) / sqrt(n())) |>
+  summarise(mean_weight = mean(total_weight_g), se_weight = sd(total_weight_g) / sqrt(n()), .groups = "drop") |>
   left_join(weight_letters, by = c("site", "treatment"))
+
+pd_dodge <- position_dodge(width = 0.18)
 
 fig_interaction <- ggplot(
   weight_interaction_summary,
-  aes(x = treatment, y = mean_weight, group = site, shape = site)
+  aes(x = treatment, y = mean_weight, group = site, shape = site, linetype = site)
 ) +
-  geom_line(aes(linetype = site), linewidth = 0.8) +
-  geom_point(size = 3.2) +
+  geom_line(position = pd_dodge, linewidth = 0.8) +
+  geom_point(position = pd_dodge, size = 3.2) +
   geom_errorbar(
     aes(ymin = pmax(mean_weight - se_weight, 0), ymax = mean_weight + se_weight),
+    position = pd_dodge,
     width = 0.08
   ) +
   geom_text(
-    aes(y = mean_weight + se_weight + 4, label = significance_group),
+    aes(y = mean_weight + se_weight + 3.5, label = display_letter),
+    position = pd_dodge,
     fontface = "bold",
     size = 4.5,
     show.legend = FALSE
   ) +
-  scale_y_continuous(expand = expansion(mult = c(0.03, 0.15))) +
+  scale_y_continuous(expand = expansion(mult = c(0.03, 0.16))) +
   labs(
-    title = "Site x treatment response in seed production",
-    subtitle = paste0(
-      "Mean total harvested seed weight per plot +/- SE; letters compare treatments within site; treatment x site ",
+    title = NULL,
+    subtitle = wrap_sub(paste0(
+      "Mean total harvested seed weight per plot ± SE; letters compare treatments within site (α = 0.05); treatment × site ",
       format_p(weight_interaction_p)
-    ),
+    )),
     x = "Treatment",
     y = "Seed weight per plot (g)",
     shape = "Site",
     linetype = "Site"
   ) +
-  theme_classic(base_size = 13) +
-  theme(legend.position = "top", axis.title = element_text(face = "bold"))
+  theme_manuscript() +
+  theme(legend.position = "top")
+
 print(fig_interaction)
-save_plot("Supplement_Figure_2_Site_Treatment_Interaction.png", fig_interaction, width = 8.5, height = 6)
+save_plot("Supplement_Figure_2_Site_Treatment_Interaction.png", fig_interaction, width = 8.5, height = 5.2)
 
 # ---- QUANTITY vs FILL CORRELATION ----
 cor_dat <- seed_dat |>
   filter(!is.na(weight_g), !is.na(filled_proportion))
 weight_quality_cor <- cor.test(cor_dat$weight_g, cor_dat$filled_proportion,
-                              method = "spearman", exact = FALSE)
+                               method = "spearman", exact = FALSE)
 correlation_results <- tibble(
   statistic = unname(weight_quality_cor$statistic),
   rho = unname(weight_quality_cor$estimate),
@@ -1094,18 +1129,21 @@ write_table(correlation_results, "23_weight_vs_filled_seed_correlation.csv")
 fig_quality_weight <- cor_dat |>
   ggplot(aes(x = weight_g, y = filled_proportion, shape = site)) +
   geom_point(alpha = 0.65, size = 2.2) +
-  geom_smooth(method = "lm", se = TRUE) +
+  geom_smooth(method = "lm", se = TRUE, color = "black") +
   facet_wrap(~ treatment) +
   scale_y_continuous(labels = percent_format()) +
   labs(
-    title = "Relationship between seed quantity and seed filling",
-    subtitle = "Seed-producing Liatris plugs only",
-    x = "Harvested seed mass per plug (g)", y = "Filled-seed proportion", shape = "Site"
+    title = NULL,
+    subtitle = wrap_sub("Seed-producing Liatris plugs only"),
+    x = "Harvested seed mass per plug (g)",
+    y = "Filled-seed proportion",
+    shape = "Site"
   ) +
-  theme_classic(base_size = 13) +
-  theme(legend.position = "top", strip.background = element_blank(), strip.text = element_text(face = "bold"))
+  theme_manuscript() +
+  theme(legend.position = "top")
+
 print(fig_quality_weight)
-save_plot("Supplement_Figure_3_Weight_vs_Filled_Seed.png", fig_quality_weight, width = 9, height = 5.5)
+save_plot("Supplement_Figure_3_Weight_vs_Filled_Seed.png", fig_quality_weight, width = 9, height = 5.2)
 
 # ---- ESTIMATED FILLED-SEED MASS (DESCRIPTIVE PROXY, NOT VIABILITY) ----
 dat <- dat |>
@@ -1127,11 +1165,10 @@ estimated_filled_summary <- dat |>
   )
 write_table(estimated_filled_summary, "24_estimated_filled_seed_mass.csv")
 
-
-# ---- COMBINED FIGURE ----
-combined_figure <- (fig_weight + fig_mortality + fig_filled + plot_layout(guides = "collect")) &
-  theme(legend.position = "bottom")
-save_plot("Figure_4_Combined_Performance.png", combined_figure, width = 15, height = 6)
+# ---- COMBINED FIGURE (STACKED VERTICALLY FOR 2-FACET PANELS) ----
+combined_figure <- (fig_weight / fig_mortality / fig_filled) +
+  plot_annotation(tag_levels = "A")
+save_plot("Figure_4_Combined_Performance.png", combined_figure, width = 8.5, height = 13.5)
 
 # Confirm all manuscript/supplementary figure exports, and create a searchable
 # manifest BEFORE any later Excel/model exports can fail.
@@ -1221,7 +1258,7 @@ cat("Surviving plugs: ", sum(dat$survived), "\n")
 cat("Mortality: ", sum(dat$mortality), "\n")
 cat("Plugs recorded as producing seed: ", sum(dat$produced_seed), "\n")
 cat("Surviving plugs that did not produce seed: ", sum(dat$survived == 1 & dat$produced_seed == 0), "\n")
-cat("Seed-producing plugs missing seed mass: ", sum(dat$produced_seed == 1 & is.na(dat$weight_g)), "\n")
+cat("Seed-producing plugs missing seed mass: ", sum(dat$produced_seed == 1 & is.na(weight_g)), "\n")
 # Snapshot the fitted random-effects variance components for interpretation.
 capture.output(VarCorr(mortality_model_interaction),
                file = file.path(models_dir, "mortality_random_variances.txt"))

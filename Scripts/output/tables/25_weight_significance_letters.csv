@@ -1,7 +1,7 @@
-site,treatment,significance_group
-Panhandle,N,ab
-Panhandle,F,a
-Panhandle,P,b
-Peninsula,N,a
-Peninsula,F,b
-Peninsula,P,c
+site,treatment,significance_group,display_letter
+Panhandle,N,ab,ab
+Panhandle,F,a,a
+Panhandle,P,b,b
+Peninsula,N,a,a
+Peninsula,F,b,b
+Peninsula,P,c,c
